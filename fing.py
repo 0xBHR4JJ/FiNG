@@ -4,7 +4,7 @@ import time
 import os
 import argparse
 import asyncio
-
+import sys
 
 # ICMP constants
 ICMP_ECHO_REQUEST = 8  # Type 8 for Echo Request
@@ -49,8 +49,8 @@ async def ping_domain(domain, pid, timeout=1):
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
     except PermissionError:
-        print("You need to run this script as an administrator/root user.")
-        return None
+        print("[-] You need to run this script as an administrator/root user.")
+        sys.exit(1)  # Exit if permission is denied
 
     # Create ICMP packet
     packet = create_packet(pid)
@@ -92,19 +92,33 @@ async def ping_all_domains(domains):
 
 # Main function to handle argument parsing and start the pinging process
 def main():
+    # Check if the script is run with root privileges
+    if os.geteuid() != 0:
+        print("[-] You need to run this script as an administrator/root user.")
+        sys.exit(1)  # Exit if not running as root
+
     # Argument parser
     parser = argparse.ArgumentParser(description="Ping domains faster than traditional ping.")
-    parser.add_argument("-d", "--domain-file", required=True, help="Input file containing list of domains to ping.")
+    parser.add_argument("-u", "--url", help="Single URL or domain to ping.")
+    parser.add_argument("-d", "--domain-file", help="Input file containing list of domains to ping.")
     parser.add_argument("-o", "--output-file", help="Output file to save active domains.")
 
     args = parser.parse_args()
 
-    # Read domains from file if provided
-    try:
-        with open(args.domain_file, 'r') as f:
-            domains = [line.strip() for line in f if line.strip()]
-    except FileNotFoundError:
-        print(f"File {args.domain_file} not found.")
+    domains = []
+
+    # Check if -u or -d is provided
+    if args.url:
+        domains.append(args.url)
+    elif args.domain_file:
+        try:
+            with open(args.domain_file, 'r') as f:
+                domains = [line.strip() for line in f if line.strip()]
+        except FileNotFoundError:
+            print(f"File {args.domain_file} not found.")
+            return
+    else:
+        print("[ERROR] No domain or URL provided. Please use -u <url> or -d <domain_file>.")
         return
 
     # Start the asynchronous pinging process
@@ -116,17 +130,16 @@ def main():
     # Display the status of each domain on the screen
     for domain in domains:
         if domain in active_domains:
-            print(f"\033[91m [FOUND]\033[0m {domain}")
+            print(f"\033[92m[FOUND] {domain}\033[0m")  # Green color for found domains
         else:
-            print(f"\033[91m [NOT FOUND]\033[0m {domain}")
+            print(f"\033[91m[NOT FOUND] {domain}\033[0m")  # Red color for not found domains
 
     # If output file is provided, save only the active domains to it
     if args.output_file:
         with open(args.output_file, 'w') as f_out:
             for domain in active_domains:
                 f_out.write(domain + "\n")
-        print(f"Active domains written to {args.output_file}")
-
+        print(f"[+] Active domains written to {args.output_file}")
 
 if __name__ == "__main__":
     print(""" 
@@ -135,7 +148,7 @@ if __name__ == "__main__":
  | |_  | |  \| | |  _ 
  |  _| | | |\  | |_| |
  |_|   |_|_| \_|\____|
-                      
+                         
                         - @0xBH4RJJ
      """)
     main()
